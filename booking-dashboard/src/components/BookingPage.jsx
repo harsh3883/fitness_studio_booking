@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../components/AuthContext';
 import BookingForm from '../components/BookingForm';
 import './BookingPage.css';
 

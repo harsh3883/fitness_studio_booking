@@ -1,7 +1,7 @@
 // pages/Login.jsx - Login Page
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../components/AuthContext';
 import './Auth.css';
 
 const Login = () => {

@@ -7,6 +7,15 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.core.cache import cache
 from datetime import timedelta
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
+from rest_framework.authtoken.models import Token
+from rest_framework.permissions import AllowAny
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+import json
 import logging
 from .models import FitnessClass, Booking, Client, Instructor, ClassType
 from .serializers import (
@@ -292,3 +301,219 @@ def get_class_details(request, class_id):
             'success': False,
             'message': 'Class not found'
         }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register_user(request):
+    """
+    POST /api/auth/register/
+    Register a new user account
+    """
+    try:
+        data = request.data
+        
+        # Validate required fields
+        required_fields = ['username', 'email', 'password', 'first_name', 'last_name']
+        for field in required_fields:
+            if not data.get(field):
+                return Response({
+                    'success': False,
+                    'message': f'{field} is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if user already exists
+        if User.objects.filter(username=data['username']).exists():
+            return Response({
+                'success': False,
+                'message': 'Username already exists'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if User.objects.filter(email=data['email']).exists():
+            return Response({
+                'success': False,
+                'message': 'Email already registered'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate password
+        try:
+            validate_password(data['password'])
+        except ValidationError as e:
+            return Response({
+                'success': False,
+                'message': 'Password validation failed',
+                'errors': list(e.messages)
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create user
+        user = User.objects.create_user(
+            username=data['username'],
+            email=data['email'],
+            password=data['password'],
+            first_name=data['first_name'],
+            last_name=data['last_name']
+        )
+        
+        # Create or get auth token
+        token, created = Token.objects.get_or_create(user=user)
+        
+        # Create corresponding Client record
+        try:
+            client, created = Client.objects.get_or_create(
+                email=user.email,
+                defaults={
+                    'name': f"{user.first_name} {user.last_name}",
+                    'phone': data.get('phone', '')
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to create client record: {e}")
+        
+        logger.info(f"New user registered: {user.username}")
+        
+        return Response({
+            'success': True,
+            'message': 'Registration successful',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name
+            },
+            'token': token.key
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        logger.error(f"Registration failed: {e}")
+        return Response({
+            'success': False,
+            'message': 'Registration failed due to server error'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def login_user(request):
+    """
+    POST /api/auth/login/
+    Authenticate user and return token
+    """
+    try:
+        data = request.data
+        
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            return Response({
+                'success': False,
+                'message': 'Username and password are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Authenticate user
+        user = authenticate(username=username, password=password)
+        
+        if user is None:
+            return Response({
+                'success': False,
+                'message': 'Invalid username or password'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
+        if not user.is_active:
+            return Response({
+                'success': False,
+                'message': 'Account is disabled'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
+        # Get or create token
+        token, created = Token.objects.get_or_create(user=user)
+        
+        # Log the user in
+        login(request, user)
+        
+        logger.info(f"User logged in: {user.username}")
+        
+        return Response({
+            'success': True,
+            'message': 'Login successful',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name
+            },
+            'token': token.key
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Login failed: {e}")
+        return Response({
+            'success': False,
+            'message': 'Login failed due to server error'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_user(request):
+    """
+    POST /api/auth/logout/
+    Logout user and delete token
+    """
+    try:
+        # Delete the user's token
+        request.user.auth_token.delete()
+        
+        # Django logout
+        logout(request)
+        
+        return Response({
+            'success': True,
+            'message': 'Logout successful'
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Logout failed: {e}")
+        return Response({
+            'success': False,
+            'message': 'Logout failed'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_profile(request):
+    """
+    GET /api/auth/profile/
+    Get current user profile
+    """
+    try:
+        user = request.user
+        
+        # Get associated client record
+        client = None
+        try:
+            client = Client.objects.get(email=user.email)
+        except Client.DoesNotExist:
+            pass
+        
+        return Response({
+            'success': True,
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'date_joined': user.date_joined.isoformat()
+            },
+            'client_info': ClientSerializer(client).data if client else None
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Profile retrieval failed: {e}")
+        return Response({
+            'success': False,
+            'message': 'Failed to retrieve profile'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

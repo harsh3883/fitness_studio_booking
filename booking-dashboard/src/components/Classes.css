@@ -1,0 +1,24 @@
+.classes-page {
+  padding: 40px 0;
+  min-height: 100vh;
+}
+
+.classes-page h1 {
+  text-align: center;
+  font-size: 2.5rem;
+  margin-bottom: 40px;
+  color: #1e293b;
+}
+
+.classes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 30px;
+  margin-top: 40px;
+}
+
+.no-classes {
+  text-align: center;
+  padding: 60px 20px;
+  color: #64748b;
+}
