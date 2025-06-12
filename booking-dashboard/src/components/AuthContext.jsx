@@ -1,7 +1,6 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import { createContext, useState, useContext, useEffect } from 'react';
+import {API_BASE_URL} from '../api/api'; 
 
-// Environment-based API base URL
-const API_BASE_URL = "http://localhost:8000" ;
 
 const AuthContext = createContext();
 
@@ -49,12 +48,19 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (credentials) => {
     try {
+        const loginData = {
+          username: credentials.email,
+          password: credentials.password
+        };
+        console.log(loginData)
+
       const response = await fetch(`${API_BASE_URL}/api/auth/login/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(credentials),
+        
+        body: JSON.stringify(loginData),
       });
 
       if (response.ok) {
@@ -64,34 +70,58 @@ export const AuthProvider = ({ children }) => {
         return { success: true };
       } else {
         const errorData = await response.json();
-        return { success: false, error: errorData.message };
+        console.error('Login error response:', errorData);
+        return { 
+          success: false, 
+          error: errorData.message || errorData.detail || 'Login failed' 
+        };
       }
     } catch (error) {
+      console.error('Login network error:', error);
       return { success: false, error: 'Network error occurred' };
     }
   };
 
   const register = async (userData) => {
     try {
+      // Ensure username is included - auto-generate from email if not provided
+      const registrationData = {
+        ...userData,
+        username: userData.username || userData.email.split('@')[0]
+      };
+
+      console.log('Sending registration data:', registrationData);
+
       const response = await fetch(`${API_BASE_URL}/api/auth/register/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(userData),
+        body: JSON.stringify(registrationData),
       });
 
+      const data = await response.json();
+      console.log('Registration response:', data);
+
       if (response.ok) {
-        const data = await response.json();
-        localStorage.setItem('token', data.token);
-        setUser(data.user);
-        return { success: true };
+        // Handle successful registration
+        if (data.token) {
+          localStorage.setItem('token', data.token);
+        }
+        if (data.user) {
+          setUser(data.user);
+        }
+        return { success: true, data };
       } else {
-        const errorData = await response.json();
-        return { success: false, error: errorData.message };
+        console.error('Registration error response:', data);
+        return { 
+          success: false, 
+          error: data.message || data.detail || Object.values(data)[0] || 'Registration failed' 
+        };
       }
     } catch (error) {
-      return { success: false, error: 'Network error occurred' };
+      console.error('Registration network error:', error);
+      return { success: false, error: 'Network error. Please try again.' };
     }
   };
 

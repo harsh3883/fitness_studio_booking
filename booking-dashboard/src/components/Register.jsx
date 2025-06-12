@@ -6,6 +6,7 @@ import './Auth.css';
 
 const Register = () => {
   const [formData, setFormData] = useState({
+    username: '', // Added username field
     first_name: '',
     last_name: '',
     email: '',
@@ -38,12 +39,18 @@ const Register = () => {
       return;
     }
 
-    const result = await register(formData);
-    
-    if (result.success) {
-      navigate('/dashboard');
-    } else {
-      setError(result.error);
+    try {
+      const result = await register(formData);
+      
+      // Check if result exists and has expected structure
+      if (result && result.success) {
+        navigate('/dashboard');
+      } else {
+        setError(result?.error || 'Registration failed. Please try again.');
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      setError('An unexpected error occurred. Please try again.');
     }
     
     setLoading(false);
@@ -59,6 +66,19 @@ const Register = () => {
           {error && <div className="error-message">{error}</div>}
 
           <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="username">Username</label>
+              <input
+                type="text"
+                id="username"
+                name="username"
+                value={formData.username}
+                onChange={handleInputChange}
+                placeholder="Choose a unique username"
+                required
+              />
+            </div>
+
             <div className="form-row">
               <div className="form-group">
                 <label htmlFor="first_name">First Name</label>

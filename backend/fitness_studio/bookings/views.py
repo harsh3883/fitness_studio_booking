@@ -15,6 +15,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.db import models  # Add this import
 import json
 import logging
 from .models import FitnessClass, Booking, Client, Instructor, ClassType
@@ -73,18 +74,44 @@ class ClassListView(generics.ListAPIView):
         
         response = super().list(request, *args, **kwargs)
         
-        # Add metadata
-        response.data['metadata'] = {
-            'total_classes': self.get_queryset().count(),
-            'available_slots': sum(cls.available_slots for cls in self.get_queryset()),
-            'upcoming_days': 7,
-            'filters_applied': bool(request.query_params)
-        }
+        # Fix: Handle both paginated and non-paginated responses
+        if isinstance(response.data, dict) and 'results' in response.data:
+            # Paginated response
+            results_count = len(response.data['results'])
+            response.data['metadata'] = {
+                'total_available_classes': results_count,
+                'generated_at': timezone.now().isoformat(),
+                'filters_applied': {
+                    'type': request.query_params.get('type'),
+                    'instructor': request.query_params.get('instructor'),
+                    'date': request.query_params.get('date'),
+                    'difficulty': request.query_params.get('difficulty'),
+                    'available_only': request.query_params.get('available_only', 'false')
+                }
+            }
+        else:
+            # Non-paginated response (list)
+            results_count = len(response.data) if response.data else 0
+            # Convert to dict format with results and metadata
+            response.data = {
+                'results': response.data,
+                'metadata': {
+                    'total_available_classes': results_count,
+                    'generated_at': timezone.now().isoformat(),
+                    'filters_applied': {
+                        'type': request.query_params.get('type'),
+                        'instructor': request.query_params.get('instructor'),
+                        'date': request.query_params.get('date'),
+                        'difficulty': request.query_params.get('difficulty'),
+                        'available_only': request.query_params.get('available_only', 'false')
+                    }
+                }
+            }
         
         # Cache for 5 minutes
         cache.set(cache_key, response.data, 300)
         
-        logger.info(f"Classes listed: {len(response.data.get('results', []))} classes returned")
+        logger.info(f"Classes listed: {results_count} classes returned")
         return response
 
 @api_view(['POST'])
@@ -393,6 +420,7 @@ def register_user(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def login_user(request):
     """
     POST /api/auth/login/

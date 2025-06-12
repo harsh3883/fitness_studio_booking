@@ -2,11 +2,13 @@ import React from 'react';
 import './ClassFilter.css';
 
 const ClassFilter = ({ filters, onFilterChange, classes }) => {
-  // Extract unique values for filter options
-  const categories = [...new Set(classes.map(cls => cls.category))];
-  const difficulties = [...new Set(classes.map(cls => cls.difficulty))];
-  const dates = [...new Set(classes.map(cls => cls.date))].sort();
-  const times = [...new Set(classes.map(cls => cls.time))].sort();
+const safeArray = (arr) => Array.isArray(arr) ? arr : [];
+
+const categories = [...new Set(safeArray(classes).map(cls => cls.category))];
+const difficulties = [...new Set(safeArray(classes).map(cls => cls.difficulty))];
+const dates = [...new Set(safeArray(classes).map(cls => cls.date))].sort();
+const times = [...new Set(safeArray(classes).map(cls => cls.time))].sort();
+
 
   const handleFilterChange = (key, value) => {
     onFilterChange({

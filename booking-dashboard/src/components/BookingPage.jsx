@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthContext';
 import BookingForm from '../components/BookingForm';
 import './BookingPage.css';
+import {API_BASE_URL} from '../api/api'; 
 
 const BookingPage = () => {
   const { classId } = useParams();
@@ -18,7 +19,7 @@ const BookingPage = () => {
 
   const fetchClassData = async () => {
     try {
-      const response = await fetch(`/api/classes/${classId}/`);
+      const response = await fetch(`${API_BASE_URL}/api/classes/${classId}/`);
       if (response.ok) {
         const data = await response.json();
         setClassData(data);
@@ -41,7 +42,7 @@ const BookingPage = () => {
 
     setBooking(true);
     try {
-      const response = await fetch('/api/bookings/', {
+      const response = await fetch(`${API_BASE_URL}/api/bookings/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

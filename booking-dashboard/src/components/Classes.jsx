@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ClassCard from '../components/ClassCard';
 import ClassFilter from '../components/ClassFilter';
 import './Classes.css';
+import {API_BASE_URL} from '../api/api'; 
 
 const Classes = () => {
   const [classes, setClasses] = useState([]);
@@ -24,10 +25,11 @@ const Classes = () => {
 
   const fetchClasses = async () => {
     try {
-      const response = await fetch('/api/classes/');
+      const response = await fetch(`${API_BASE_URL}/api/classes/`);
       if (response.ok) {
         const data = await response.json();
-        setClasses(data);
+        console.log('Fetched data:', data);
+        setClasses(data.results);
       }
     } catch (error) {
       console.error('Error fetching classes:', error);

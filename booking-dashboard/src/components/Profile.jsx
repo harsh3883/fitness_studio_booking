@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import './Profile.css';
+import {API_BASE_URL} from '../api/api'; 
 
 const Profile = () => {
   const { user } = useAuth();
@@ -28,7 +29,7 @@ const Profile = () => {
     setMessage('');
 
     try {
-      const response = await fetch('/api/profile/', {
+      const response = await fetch(`${API_BASE_URL}/api/auth//profile/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
