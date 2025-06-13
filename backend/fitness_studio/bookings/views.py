@@ -15,7 +15,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.db import models  # Add this import
+from django.db import models
 import json
 import logging
 from .models import FitnessClass, Booking, Client, Instructor, ClassType
@@ -150,6 +150,19 @@ def book_class(request):
             # Get fitness class
             fitness_class = get_object_or_404(FitnessClass, id=serializer.validated_data['class_id'])
             
+            # Check if client already has a booking for this class
+            existing_booking = Booking.objects.filter(
+                fitness_class=fitness_class,
+                client=client,
+                status__in=['confirmed', 'waitlisted']
+            ).first()
+            
+            if existing_booking:
+                return Response({
+                    'success': False,
+                    'message': 'You already have a booking for this class'
+                }, status=status.HTTP_409_CONFLICT)
+            
             # Double-check availability (race condition protection)
             if not fitness_class.is_bookable:
                 return Response({
@@ -162,7 +175,8 @@ def book_class(request):
                 fitness_class=fitness_class,
                 client=client,
                 special_requests=serializer.validated_data.get('special_requests', ''),
-                status='confirmed'
+                status='confirmed',
+                payment_status='pending'
             )
             
             # Update class booking count
@@ -191,7 +205,8 @@ def book_class(request):
                     'instructor': fitness_class.instructor.name,
                     'datetime': fitness_class.datetime.isoformat(),
                     'location': fitness_class.location,
-                    'status': booking.status
+                    'status': booking.status,
+                    'price': str(fitness_class.price)
                 }
             }, status=status.HTTP_201_CREATED)
             
@@ -221,7 +236,7 @@ def get_bookings(request):
         bookings = Booking.objects.filter(client=client).select_related(
             'fitness_class__instructor', 
             'fitness_class__class_type'
-        )
+        ).order_by('-booking_datetime')
         
         # Filter by status if requested
         status_filter = request.query_params.get('status')
@@ -316,8 +331,14 @@ def get_class_details(request, class_id):
             'booking_details': {
                 'confirmed_bookings': bookings_count,
                 'waitlist_count': fitness_class.bookings.filter(status='waitlisted').count(),
+                'available_slots': fitness_class.available_slots,
+                'is_bookable': fitness_class.is_bookable,
                 'recent_bookings': [
-                    {'client_name': booking.client.name, 'booking_time': booking.booking_datetime}
+                    {
+                        'client_name': booking.client.name, 
+                        'booking_time': booking.booking_datetime.isoformat(),
+                        'booking_reference': booking.booking_reference
+                    }
                     for booking in recent_bookings
                 ]
             }
@@ -328,7 +349,6 @@ def get_class_details(request, class_id):
             'success': False,
             'message': 'Class not found'
         }, status=status.HTTP_404_NOT_FOUND)
-
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -390,7 +410,10 @@ def register_user(request):
                 email=user.email,
                 defaults={
                     'name': f"{user.first_name} {user.last_name}",
-                    'phone': data.get('phone', '')
+                    'phone': data.get('phone', ''),
+                    'fitness_goals': data.get('fitness_goals', []),
+                    'medical_conditions': data.get('medical_conditions', ''),
+                    'emergency_contact': data.get('emergency_contact', '')
                 }
             )
         except Exception as e:
@@ -417,7 +440,6 @@ def register_user(request):
             'success': False,
             'message': 'Registration failed due to server error'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -481,7 +503,6 @@ def login_user(request):
             'message': 'Login failed due to server error'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_user(request):
@@ -508,24 +529,21 @@ def logout_user(request):
             'message': 'Logout failed'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-@api_view(['GET'])
+@api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def get_user_profile(request):
     """
-    GET /api/auth/profile/
-    Get current user profile
+    GET/PUT /api/auth/profile/
+    Get or update user profile
     """
-    try:
-        user = request.user
-        
-        # Get associated client record
-        client = None
+    user = request.user
+
+    if request.method == 'GET':
         try:
             client = Client.objects.get(email=user.email)
         except Client.DoesNotExist:
-            pass
-        
+            client = None
+            
         return Response({
             'success': True,
             'user': {
@@ -538,10 +556,142 @@ def get_user_profile(request):
             },
             'client_info': ClientSerializer(client).data if client else None
         }, status=status.HTTP_200_OK)
+
+    elif request.method == 'PUT':
+        data = request.data
+
+        # Update User model
+        user.first_name = data.get('first_name', user.first_name)
+        user.last_name = data.get('last_name', user.last_name)
+        user.email = data.get('email', user.email)
+        user.save()
+
+        # Update or create Client record
+        client, created = Client.objects.get_or_create(
+            email=user.email,
+            defaults={'name': f"{user.first_name} {user.last_name}"}
+        )
+        
+        # Update client fields
+        client.name = f"{user.first_name} {user.last_name}"
+        client.phone = data.get('phone', client.phone)
+        client.emergency_contact = data.get('emergency_contact', client.emergency_contact)
+        client.medical_conditions = data.get('medical_conditions', client.medical_conditions)
+        client.fitness_goals = data.get('fitness_goals', client.fitness_goals)
+        client.preferred_timezone = data.get('preferred_timezone', client.preferred_timezone)
+        client.save()
+
+        return Response({
+            'success': True,
+            'message': 'Profile updated successfully.',
+            'client_info': ClientSerializer(client).data
+        }, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+def submit_feedback(request, booking_id):
+    """
+    POST /api/bookings/{booking_id}/feedback
+    Submit feedback for a completed booking
+    """
+    try:
+        booking = get_object_or_404(Booking, id=booking_id)
+        
+        if booking.status != 'completed':
+            return Response({
+                'success': False,
+                'message': 'Feedback can only be submitted for completed bookings'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        data = request.data
+        rating = data.get('rating')
+        comment = data.get('comment', '')
+        
+        if not rating or not (1 <= int(rating) <= 5):
+            return Response({
+                'success': False,
+                'message': 'Rating must be between 1 and 5'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        booking.feedback_rating = int(rating)
+        booking.feedback_comment = comment
+        booking.save()
+        
+        logger.info(f"Feedback submitted for booking: {booking.booking_reference}")
+        
+        return Response({
+            'success': True,
+            'message': 'Feedback submitted successfully'
+        })
         
     except Exception as e:
-        logger.error(f"Profile retrieval failed: {e}")
+        logger.error(f"Feedback submission failed: {e}")
         return Response({
             'success': False,
-            'message': 'Failed to retrieve profile'
+            'message': 'An error occurred while submitting feedback'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def get_instructors(request):
+    """
+    GET /api/instructors
+    Get list of active instructors
+    """
+    try:
+        instructors = Instructor.objects.filter(is_active=True).order_by('name')
+        
+        instructor_data = []
+        for instructor in instructors:
+            instructor_data.append({
+                'id': str(instructor.id),
+                'name': instructor.name,
+                'specializations': instructor.specializations,
+                'bio': instructor.bio,
+                'experience_years': instructor.experience_years,
+                'rating': float(instructor.rating),
+                'total_classes': instructor.classes.filter(status='completed').count()
+            })
+        
+        return Response({
+            'success': True,
+            'instructors': instructor_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get instructors: {e}")
+        return Response({
+            'success': False,
+            'message': 'Failed to retrieve instructors'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def get_class_types(request):
+    """
+    GET /api/class-types
+    Get list of active class types
+    """
+    try:
+        class_types = ClassType.objects.filter(is_active=True).order_by('name')
+        
+        class_type_data = []
+        for class_type in class_types:
+            class_type_data.append({
+                'id': str(class_type.id),
+                'name': class_type.name,
+                'description': class_type.description,
+                'duration_minutes': class_type.duration_minutes,
+                'difficulty_level': class_type.difficulty_level,
+                'calories_burn_estimate': class_type.calories_burn_estimate,
+                'equipment_needed': class_type.equipment_needed
+            })
+        
+        return Response({
+            'success': True,
+            'class_types': class_type_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Failed to get class types: {e}")
+        return Response({
+            'success': False,
+            'message': 'Failed to retrieve class types'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

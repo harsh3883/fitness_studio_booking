@@ -29,11 +29,11 @@ const Profile = () => {
     setMessage('');
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth//profile/`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/profile/`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Token ${localStorage.getItem('token')}`,
         },
         body: JSON.stringify(formData),
       });

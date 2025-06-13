@@ -64,17 +64,17 @@ export const api = {
 
 // Specific API calls for your app
 export const classesAPI = {
-  getAll: () => api.get(`${API_BASE_URL}/api/classes/`),
-  getById: (id) => api.get(`${API_BASE_URL}/api/classes/${id}/`),
-  create: (classData) => api.post(`${API_BASE_URL}/api/classes/`, classData),
-  update: (id, classData) => api.put(`${API_BASE_URL}/api/classes/${id}/`, classData),
-  delete: (id) => api.delete(`${API_BASE_URL}/api/classes/${id}/`),
+  getAll: () => api.get('/api/classes/'),
+  getById: (id) => api.get(`/api/classes/${id}/`),
+  create: (classData) => api.post('/api/classes/', classData),
+  update: (id, classData) => api.put(`/api/classes/${id}/`, classData),
+  delete: (id) => api.delete(`/api/classes/${id}/`),
 };
 
 export const bookingsAPI = {
-  getAll: () => api.get(`${API_BASE_URL}/api/bookings/`),
-  create: (bookingData) => api.post(`${API_BASE_URL}/api/bookings/`, bookingData),
-  cancel: (id) => api.delete(`${API_BASE_URL}/api/bookings/${id}/`),
+  getAll: () => api.get('/api/bookings/'),
+  create: (bookingData) => api.post('/api/bookings/', bookingData),
+  cancel: (id) => api.delete(`/api/bookings/${id}/`),
 };
 
 export default api;

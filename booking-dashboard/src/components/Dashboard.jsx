@@ -19,7 +19,8 @@ const Dashboard = () => {
       setLoading(true);
       setError('');
       const data = await classesAPI.getAll();
-      setClasses(data);
+      console.log('Fetched classes data:', data); // Add this
+      setClasses(data.results);
     } catch (error) {
       console.error('Error fetching classes:', error);
       setError('Failed to load classes. Please try again.');

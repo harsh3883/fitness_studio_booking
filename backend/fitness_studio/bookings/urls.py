@@ -13,7 +13,8 @@ urlpatterns = [
     path('auth/register/', views.register_user, name='register'),
     path('auth/login/', views.login_user, name='login'),
     path('auth/logout/', views.logout_user, name='logout'),
-    path('auth/profile/', views.get_user_profile, name='profile'),
+    path('auth/profile/', views.get_user_profile, name='user-profile'),
+
     
     # Alternative: Use Django REST Framework's built-in auth
     # path('auth/', include('rest_framework.urls')),
